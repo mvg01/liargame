@@ -3,7 +3,7 @@ import { gameAPI } from '../services/api'
 import './GamePage.css'
 
 const GamePage = ({ sessionId, keyword, category, onRestart }) => {
-  const [gamePhase, setGamePhase] = useState('talk') // 'talk' or 'vote' or 'liar_caught' or 'result'
+  const [gamePhase, setGamePhase] = useState('talk')
   const [history, setHistory] = useState([])
   const [userMessage, setUserMessage] = useState('')
   const [loading, setLoading] = useState(false)
@@ -11,11 +11,65 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
   const [voteResult, setVoteResult] = useState(null)
   const [liarGuess, setLiarGuess] = useState('')
   const [finalResult, setFinalResult] = useState(null)
+  const [turnOrder, setTurnOrder] = useState([])
+  const [nextTurn, setNextTurn] = useState('')
+  const [hostComment, setHostComment] = useState('')
+  const [roundComplete, setRoundComplete] = useState(false)
   const chatEndRef = useRef(null)
+  const aiTurnTimeoutRef = useRef(null)
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [history])
+
+  // 게임 시작 시 초기 데이터 로드
+  useEffect(() => {
+    const initGame = async () => {
+      try {
+        const response = await gameAPI.getStatus(sessionId)
+        setTurnOrder(response.turn_order || [])
+        setNextTurn(response.turn_order ? response.turn_order[0] : 'user')
+      } catch (err) {
+        console.error('게임 초기화 실패:', err)
+      }
+    }
+    initGame()
+  }, [sessionId])
+
+  // AI 자동 발언
+  useEffect(() => {
+    if (gamePhase === 'talk' && nextTurn && nextTurn !== 'user' && !loading && !roundComplete) {
+      aiTurnTimeoutRef.current = setTimeout(() => {
+        handleAITurn()
+      }, 2000)
+    }
+
+    return () => {
+      if (aiTurnTimeoutRef.current) {
+        clearTimeout(aiTurnTimeoutRef.current)
+      }
+    }
+  }, [nextTurn, gamePhase, loading, roundComplete])
+
+  const handleAITurn = async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      const response = await gameAPI.sendMessage(sessionId, '')
+      setHistory(response.history)
+      setNextTurn(response.next_turn)
+      setHostComment(response.host_comment || '')
+
+      if (response.history.length >= turnOrder.length && response.history.length % turnOrder.length === 0) {
+        setRoundComplete(true)
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'AI 발언 실패')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleSendMessage = async (e) => {
     e.preventDefault()
@@ -26,14 +80,23 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
 
     try {
       const response = await gameAPI.sendMessage(sessionId, userMessage.trim())
-
       setHistory(response.history)
+      setNextTurn(response.next_turn)
+      setHostComment(response.host_comment || '')
       setUserMessage('')
+
+      if (response.history.length >= turnOrder.length && response.history.length % turnOrder.length === 0) {
+        setRoundComplete(true)
+      }
     } catch (err) {
       setError(err.response?.data?.detail || '메시지 전송 실패')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleContinueRound = () => {
+    setRoundComplete(false)
   }
 
   const handleVotePhase = () => {
@@ -48,11 +111,9 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
       const response = await gameAPI.vote(sessionId, aiName)
       setVoteResult(response)
 
-      // 라이어가 걸렸으면 역전 승부 단계로
       if (response.liar_caught) {
         setGamePhase('liar_caught')
       } else {
-        // 라이어가 안 걸렸으면 바로 결과
         setFinalResult(response)
         setGamePhase('result')
       }
@@ -72,8 +133,6 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
 
     try {
       const response = await gameAPI.liarGuess(sessionId, liarGuess.trim())
-
-      // 역전 승부 결과를 포함한 최종 결과 설정
       setFinalResult({
         ...voteResult,
         liar_guess_result: response,
@@ -116,15 +175,6 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
 
             {error && <div className="error-message">{error}</div>}
           </div>
-
-          <div className="vote-summary-small">
-            <h3>투표 결과</h3>
-            {Object.entries(voteResult.vote_counts).map(([player, count]) => (
-              <div key={player} className="vote-item">
-                {player}: {count}표
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     )
@@ -147,35 +197,6 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
               </p>
             </div>
           )}
-
-          <div className="result-section">
-            <h2>투표 결과</h2>
-            <div className="vote-summary">
-              <p>
-                <strong>당신의 투표:</strong> {finalResult.user_vote}
-              </p>
-              <p>
-                <strong>AI 투표:</strong>
-              </p>
-              <ul>
-                <li>AI 1: {finalResult.ai_votes.ai_1}</li>
-                <li>AI 2: {finalResult.ai_votes.ai_2}</li>
-                <li>AI 3: {finalResult.ai_votes.ai_3}</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="result-section">
-            <h2>득표 결과</h2>
-            <div className="vote-counts">
-              {Object.entries(finalResult.vote_counts).map(([player, count]) => (
-                <div key={player} className="vote-count-item">
-                  <span className="player-name">{player}</span>
-                  <span className="vote-badge">{count}표</span>
-                </div>
-              ))}
-            </div>
-          </div>
 
           <div className="result-section liar-reveal">
             <h2>라이어는...</h2>
@@ -226,18 +247,60 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
   return (
     <div className="game-page">
       <header className="game-header">
-        <h1>AI Liar Game</h1>
+        <h1>🎭 AI Liar Game</h1>
         <div className="game-info">
           <span className="category-badge">카테고리: {category}</span>
           <span className="keyword-badge">주제어: {keyword}</span>
-          <span className="session-badge">세션: {sessionId}</span>
         </div>
       </header>
+
+      {/* 발언 순서 */}
+      {turnOrder.length > 0 && (
+        <div className="turn-order-display">
+          <h3>🎯 발언 순서</h3>
+          <div className="turn-order-list">
+            {turnOrder.map((player, index) => (
+              <div
+                key={index}
+                className={`turn-item ${player === nextTurn ? 'current-turn' : ''}`}
+              >
+                <span className="turn-number">{index + 1}</span>
+                <span className="turn-player">{getPlayerDisplayName(player)}</span>
+                {player === nextTurn && <span className="turn-indicator">👈 현재</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 사회자 멘트 */}
+      {hostComment && (
+        <div className="host-comment">
+          <span className="host-icon">🎙️</span>
+          <span className="host-text">{hostComment}</span>
+        </div>
+      )}
+
+      {/* 라운드 완료 */}
+      {roundComplete && (
+        <div className="round-complete-panel">
+          <h3>🔔 라운드 완료!</h3>
+          <p>투표를 진행하시겠습니까?</p>
+          <div className="round-choice-buttons">
+            <button onClick={handleVotePhase} className="vote-now-button">
+              투표 시작
+            </button>
+            <button onClick={handleContinueRound} className="continue-button">
+              계속 진행
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="chat-container">
         <div className="chat-messages">
           {history.length === 0 && (
-            <div className="empty-state">대화를 시작해보세요!</div>
+            <div className="empty-state">게임이 곧 시작됩니다...</div>
           )}
 
           {history.map((msg, index) => (
@@ -255,27 +318,32 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
           <div ref={chatEndRef} />
         </div>
 
-        <form onSubmit={handleSendMessage} className="message-form">
-          <input
-            type="text"
-            value={userMessage}
-            onChange={(e) => setUserMessage(e.target.value)}
-            placeholder="메시지를 입력하세요..."
-            disabled={loading}
-            className="message-input"
-          />
-          <button type="submit" disabled={loading || !userMessage.trim()} className="send-button">
-            {loading ? '전송 중...' : '전송'}
-          </button>
-        </form>
+        {/* 사용자 입력 */}
+        {nextTurn === 'user' && !roundComplete ? (
+          <form onSubmit={handleSendMessage} className="message-form">
+            <input
+              type="text"
+              value={userMessage}
+              onChange={(e) => setUserMessage(e.target.value)}
+              placeholder="당신의 차례입니다! 메시지를 입력하세요..."
+              disabled={loading}
+              className="message-input user-turn-input"
+              autoFocus
+            />
+            <button type="submit" disabled={loading || !userMessage.trim()} className="send-button">
+              {loading ? '전송 중...' : '발언하기'}
+            </button>
+          </form>
+        ) : !roundComplete ? (
+          <div className="waiting-turn">
+            <p>⏳ {getPlayerDisplayName(nextTurn)}의 차례를 기다리는 중...</p>
+          </div>
+        ) : null}
 
         {error && <div className="error-message">{error}</div>}
       </div>
 
       <footer className="game-footer">
-        <button onClick={handleVotePhase} className="vote-button" disabled={history.length === 0}>
-          투표하기
-        </button>
         <button onClick={onRestart} className="restart-button-small">
           게임 종료
         </button>
@@ -290,8 +358,19 @@ function getSpeakerName(speaker) {
     ai_1: 'AI 1',
     ai_2: 'AI 2',
     ai_3: 'AI 3',
+    host: '사회자',
   }
   return names[speaker] || speaker
+}
+
+function getPlayerDisplayName(player) {
+  const names = {
+    user: '나',
+    ai_1: 'AI 1',
+    ai_2: 'AI 2',
+    ai_3: 'AI 3',
+  }
+  return names[player] || player
 }
 
 export default GamePage

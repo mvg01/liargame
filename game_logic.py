@@ -62,6 +62,10 @@ def create_game(session_id: str, keyword: str = None, category: str = None) -> G
     # 역할 배정
     ai_roles = {ai: PlayerRole.LIAR if ai == liar else PlayerRole.CIVILIAN for ai in ai_players}
 
+    # 발언 순서 랜덤 설정 (user 포함)
+    all_players = ["user", "ai_1", "ai_2", "ai_3"]
+    turn_order = random.sample(all_players, len(all_players))
+
     # 게임 상태 생성
     game = GameState(
         session_id=session_id,
@@ -70,6 +74,8 @@ def create_game(session_id: str, keyword: str = None, category: str = None) -> G
         liar=liar,
         ai_roles=ai_roles,
         history=[],
+        turn_order=turn_order,
+        current_turn=0,
         started=True,
     )
 
@@ -298,3 +304,60 @@ def liar_guess_keyword(session_id: str, guess: str) -> dict:
         result["result"] = f"라이어 패배! 정답은 '{game.keyword}'였습니다."
 
     return result
+
+
+def generate_host_comment(session_id: str, context: str) -> str:
+    """
+    사회자 코멘트 생성
+
+    Args:
+        session_id: 세션 ID
+        context: 현재 상황 (game_start, turn_announce, round_end 등)
+
+    Returns:
+        str: 사회자 멘트
+    """
+    game = get_game(session_id)
+
+    if context == "game_start":
+        prompt = f"""당신은 '라이어 게임'의 사회자입니다.
+
+게임이 시작되었습니다. 다음 정보를 바탕으로 게임 시작 멘트를 해주세요:
+- 카테고리: {game.category}
+- 참가자: 사용자, AI_1, AI_2, AI_3 (총 4명)
+- 발언 순서: {' → '.join(game.turn_order)}
+
+간결하고 재미있게 게임을 시작해주세요 (2-3문장).
+"""
+
+    elif context == "turn_announce":
+        current_player = game.turn_order[game.current_turn % len(game.turn_order)]
+        prompt = f"""당신은 '라이어 게임'의 사회자입니다.
+
+현재 차례인 플레이어({current_player})를 호명하고 발언을 독려해주세요.
+짧고 재미있게 (1문장).
+"""
+
+    elif context == "round_end":
+        round_num = (game.current_turn // len(game.turn_order)) + 1
+        prompt = f"""당신은 '라이어 게임'의 사회자입니다.
+
+{round_num}라운드가 끝났습니다.
+지금까지의 대화를 간단히 정리하고, 다음 라운드를 시작하거나 투표를 진행할지 물어보세요 (2문장).
+"""
+
+    else:
+        return "사회자: 계속 진행하겠습니다."
+
+    messages = [{"role": "system", "content": prompt}]
+
+    try:
+        response = client.chat.completions.create(
+            model=settings.openai_model,
+            messages=messages,
+            temperature=0.9,
+            max_tokens=100
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"사회자: [오류] {str(e)}"

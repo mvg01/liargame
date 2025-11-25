@@ -22,6 +22,7 @@ from game_logic import (
     add_message_to_history,
     ai_vote,
     liar_guess_keyword,
+    generate_host_comment,
 )
 from config import get_settings
 
@@ -68,6 +69,7 @@ async def start_game(request: GameStartRequest):
     - 주제어 설정 (None이면 랜덤)
     - 라이어 랜덤 배정
     - AI 역할 설정
+    - 발언 순서 랜덤 설정
     """
     try:
         game = create_game(
@@ -76,12 +78,17 @@ async def start_game(request: GameStartRequest):
             category=request.category
         )
 
+        # 사회자 오프닝 멘트
+        host_comment = generate_host_comment(request.session_id, "game_start")
+
         return GameStartResponse(
             session_id=game.session_id,
             keyword=game.keyword,
             category=game.category,
             liar=game.liar,
+            turn_order=game.turn_order,
             message=f"게임이 시작되었습니다! 카테고리: {game.category}, 주제어: '{game.keyword}' (라이어: {game.liar})",
+            host_comment=host_comment,
         )
 
     except Exception as e:
@@ -91,32 +98,45 @@ async def start_game(request: GameStartRequest):
 @app.post("/talk", response_model=TalkResponse)
 async def talk(request: TalkRequest):
     """
-    대화 진행
+    대화 진행 (순서대로)
 
-    1. 사용자 메시지 추가
-    2. AI 3명이 순차적으로 응답
-    3. 각 AI는 독립적인 컨텍스트로 동작 (서로의 역할을 모름)
+    1. 현재 차례 플레이어만 발언
+    2. 턴 증가
+    3. 다음 차례 알림
     """
     try:
         game = get_game(request.session_id)
 
-        # 1. 사용자 메시지 추가
-        add_message_to_history(request.session_id, "user", request.user_message)
+        # 현재 차례 확인
+        current_player = game.turn_order[game.current_turn % len(game.turn_order)]
 
-        # 2. AI 응답 생성 (독립적인 스레드)
-        ai_responses = {}
-        ai_players = ["ai_1", "ai_2", "ai_3"]
+        # 사용자 차례인 경우
+        if current_player == "user":
+            add_message_to_history(request.session_id, "user", request.user_message)
+        else:
+            # AI 차례인 경우
+            ai_response = generate_ai_response(request.session_id, current_player)
+            add_message_to_history(request.session_id, current_player, ai_response)
 
-        for ai_name in ai_players:
-            response = generate_ai_response(request.session_id, ai_name)
-            ai_responses[ai_name] = response
+        # 턴 증가
+        game.current_turn += 1
 
-            # 공용 히스토리에 추가
-            add_message_to_history(request.session_id, ai_name, response)
+        # 다음 차례 플레이어
+        next_player = game.turn_order[game.current_turn % len(game.turn_order)]
 
-        # 3. 응답 반환
+        # 라운드가 끝났는지 확인 (모든 플레이어가 한 번씩 발언)
+        host_comment = None
+        if game.current_turn % len(game.turn_order) == 0:
+            host_comment = generate_host_comment(request.session_id, "round_end")
+        else:
+            host_comment = generate_host_comment(request.session_id, "turn_announce")
+
         return TalkResponse(
-            session_id=request.session_id, history=game.history, ai_responses=ai_responses
+            session_id=request.session_id,
+            history=game.history,
+            ai_responses={},  # 더 이상 한꺼번에 응답하지 않음
+            next_turn=next_player,
+            host_comment=host_comment,
         )
 
     except ValueError as e:
@@ -209,6 +229,7 @@ async def get_status(session_id: str):
 
     - 현재 대화 기록
     - AI 역할 (디버깅용)
+    - 발언 순서 및 현재 차례
     """
     try:
         game = get_game(session_id)
@@ -221,6 +242,8 @@ async def get_status(session_id: str):
             "ai_roles": game.ai_roles,
             "history": game.history,
             "total_messages": len(game.history),
+            "turn_order": game.turn_order,
+            "current_turn": game.current_turn,
         }
 
     except ValueError as e:

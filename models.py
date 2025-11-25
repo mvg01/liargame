@@ -16,8 +16,9 @@ class PlayerRole(str, Enum):
 class Message(BaseModel):
     """대화 메시지"""
 
-    speaker: str = Field(..., description="발언자 (user, ai_1, ai_2, ai_3)")
+    speaker: str = Field(..., description="발언자 (user, ai_1, ai_2, ai_3, host)")
     content: str = Field(..., description="발언 내용")
+    is_host: bool = Field(default=False, description="사회자 메시지 여부")
 
 
 class GameStartRequest(BaseModel):
@@ -35,7 +36,9 @@ class GameStartResponse(BaseModel):
     keyword: str
     category: str
     liar: str = Field(..., description="라이어 AI (ai_1, ai_2, ai_3)")
+    turn_order: List[str] = Field(..., description="발언 순서")
     message: str
+    host_comment: str = Field(..., description="사회자 멘트")
 
 
 class TalkRequest(BaseModel):
@@ -51,6 +54,8 @@ class TalkResponse(BaseModel):
     session_id: str
     history: List[Message] = Field(..., description="전체 대화 기록")
     ai_responses: dict = Field(..., description="AI 응답 {'ai_1': '...', 'ai_2': '...', 'ai_3': '...'}")
+    next_turn: str = Field(..., description="다음 차례 플레이어")
+    host_comment: Optional[str] = Field(None, description="사회자 멘트")
 
 
 class VoteRequest(BaseModel):
@@ -98,4 +103,6 @@ class GameState(BaseModel):
     liar: str
     ai_roles: dict = Field(..., description="AI별 역할 {'ai_1': 'civilian', 'ai_2': 'liar', ...}")
     history: List[Message] = Field(default_factory=list, description="대화 기록")
+    turn_order: List[str] = Field(..., description="발언 순서")
+    current_turn: int = Field(default=0, description="현재 턴 인덱스")
     started: bool = True
