@@ -15,6 +15,8 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
   const [nextTurn, setNextTurn] = useState('')
   const [hostComment, setHostComment] = useState('')
   const [roundComplete, setRoundComplete] = useState(false)
+  const [actualLiar, setActualLiar] = useState('')
+  const [userRole, setUserRole] = useState('')
   const chatEndRef = useRef(null)
   const aiTurnTimeoutRef = useRef(null)
 
@@ -29,6 +31,14 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
         const response = await gameAPI.getStatus(sessionId)
         setTurnOrder(response.turn_order || [])
         setNextTurn(response.turn_order ? response.turn_order[0] : 'user')
+        setActualLiar(response.liar || '')
+
+        // 사용자 역할 판정
+        if (response.liar === 'user') {
+          setUserRole('liar')
+        } else {
+          setUserRole('civilian')
+        }
       } catch (err) {
         console.error('게임 초기화 실패:', err)
       }
@@ -148,33 +158,47 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
 
   // 라이어 역전 승부 화면
   if (gamePhase === 'liar_caught' && voteResult) {
+    const isUserLiar = voteResult.actual_liar === 'user'
+
     return (
       <div className="game-page">
         <div className="liar-caught-phase">
           <h1>라이어가 걸렸습니다!</h1>
-          <p className="liar-reveal">라이어는 <strong>{voteResult.actual_liar}</strong>입니다</p>
+          <p className="liar-reveal">라이어는 <strong>{getSpeakerName(voteResult.actual_liar)}</strong>입니다</p>
 
-          <div className="last-chance">
-            <h2>🎯 라이어의 마지막 기회!</h2>
-            <p>주제어를 맞히면 역전 승리할 수 있습니다</p>
-            <p className="category-hint">카테고리: <strong>{category}</strong></p>
+          {isUserLiar ? (
+            <div className="last-chance">
+              <h2>🎯 당신의 마지막 기회!</h2>
+              <p>주제어를 맞히면 역전 승리할 수 있습니다</p>
+              <p className="category-hint">카테고리: <strong>{category}</strong></p>
 
-            <form onSubmit={handleLiarGuess} className="guess-form">
-              <input
-                type="text"
-                value={liarGuess}
-                onChange={(e) => setLiarGuess(e.target.value)}
-                placeholder="주제어를 입력하세요..."
-                disabled={loading}
-                className="guess-input"
-              />
-              <button type="submit" disabled={loading || !liarGuess.trim()} className="guess-button">
-                {loading ? '제출 중...' : '주제어 제출'}
-              </button>
-            </form>
+              <form onSubmit={handleLiarGuess} className="guess-form">
+                <input
+                  type="text"
+                  value={liarGuess}
+                  onChange={(e) => setLiarGuess(e.target.value)}
+                  placeholder="주제어를 입력하세요..."
+                  disabled={loading}
+                  className="guess-input"
+                  autoFocus
+                />
+                <button type="submit" disabled={loading || !liarGuess.trim()} className="guess-button">
+                  {loading ? '제출 중...' : '주제어 제출'}
+                </button>
+              </form>
 
-            {error && <div className="error-message">{error}</div>}
-          </div>
+              {error && <div className="error-message">{error}</div>}
+            </div>
+          ) : (
+            <div className="last-chance">
+              <h2>⏳ 라이어가 주제어를 추측 중...</h2>
+              <p>라이어가 주제어를 맞히면 역전 승리합니다!</p>
+              <p className="category-hint">카테고리: <strong>{category}</strong></p>
+              <div className="waiting-liar">
+                <p>잠시만 기다려주세요...</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -187,9 +211,38 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
         <div className="game-result">
           <h1 className="result-title">{finalResult.result}</h1>
 
+          {/* 투표 결과 */}
+          {finalResult.vote_counts && (
+            <div className="result-section vote-summary">
+              <h2>📊 투표 결과</h2>
+              <div className="vote-counts">
+                <p><strong>나의 투표:</strong> {getSpeakerName(finalResult.user_vote)}</p>
+                <div className="ai-votes">
+                  <p><strong>AI 투표 현황:</strong></p>
+                  <ul>
+                    {Object.entries(finalResult.ai_votes || {}).map(([ai, vote]) => (
+                      <li key={ai}>
+                        {getSpeakerName(ai)} → {getSpeakerName(vote)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="vote-count-summary">
+                  <p><strong>득표 집계:</strong></p>
+                  {Object.entries(finalResult.vote_counts).map(([player, count]) => (
+                    <div key={player} className="vote-count-item">
+                      <span className="player-name">{getSpeakerName(player)}</span>
+                      <span className="vote-badge">{count}표</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {finalResult.liar_guess_result && (
             <div className="result-section liar-guess-section">
-              <h2>역전 승부 결과</h2>
+              <h2>🎯 역전 승부 결과</h2>
               <p><strong>라이어의 추측:</strong> {finalResult.liar_guess_result.guess}</p>
               <p><strong>정답:</strong> {finalResult.liar_guess_result.keyword}</p>
               <p className={finalResult.liar_guess_result.correct ? 'correct-guess' : 'wrong-guess'}>
@@ -199,12 +252,12 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
           )}
 
           <div className="result-section liar-reveal">
-            <h2>라이어는...</h2>
-            <p className="liar-name">{finalResult.actual_liar}</p>
+            <h2>🎭 라이어는...</h2>
+            <p className="liar-name">{getSpeakerName(finalResult.actual_liar)}</p>
           </div>
 
           <div className="result-section keyword-reveal">
-            <h2>주제어</h2>
+            <h2>💡 주제어</h2>
             <p className="keyword-name">{keyword}</p>
             <p className="category-name">카테고리: {category}</p>
           </div>
@@ -226,6 +279,9 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
           <p className="vote-instruction">누가 라이어라고 생각하시나요?</p>
 
           <div className="vote-buttons">
+            <button onClick={() => handleVote('user')} disabled={loading} className="vote-btn">
+              나
+            </button>
             <button onClick={() => handleVote('ai_1')} disabled={loading} className="vote-btn">
               AI 1
             </button>
@@ -250,7 +306,9 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
         <h1>🎭 AI Liar Game</h1>
         <div className="game-info">
           <span className="category-badge">카테고리: {category}</span>
-          <span className="keyword-badge">주제어: {keyword}</span>
+          {userRole === 'civilian' && <span className="keyword-badge">주제어: {keyword}</span>}
+          {userRole === 'liar' && <span className="liar-badge">⚠️ 당신은 라이어입니다!</span>}
+          {userRole === 'civilian' && <span className="civilian-badge">✅ 당신은 시민입니다</span>}
         </div>
       </header>
 

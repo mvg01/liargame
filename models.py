@@ -62,7 +62,7 @@ class VoteRequest(BaseModel):
     """투표 요청"""
 
     session_id: str
-    user_vote: Literal["ai_1", "ai_2", "ai_3"] = Field(..., description="사용자가 선택한 라이어")
+    user_vote: Literal["user", "ai_1", "ai_2", "ai_3"] = Field(..., description="사용자가 선택한 라이어")
 
 
 class VoteResponse(BaseModel):

@@ -57,6 +57,38 @@
   font-weight: 600;
 }
 
+.liar-badge {
+  background: rgba(254, 226, 226, 0.4);
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(239, 68, 68, 0.6);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 1rem;
+  color: #ff6b6b;
+  font-weight: 700;
+  animation: warningPulse 2s ease-in-out infinite;
+}
+
+@keyframes warningPulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+  }
+}
+
+.civilian-badge {
+  background: rgba(209, 250, 229, 0.3);
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(16, 185, 129, 0.6);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 1rem;
+  color: #00ffcc;
+  font-weight: 700;
+}
+
 .chat-container {
   flex: 1;
   background: rgba(255, 255, 255, 0.1);
@@ -343,18 +375,41 @@
 }
 
 .vote-summary p {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   font-size: 1rem;
+  color: white;
+}
+
+.vote-summary strong {
+  color: #00ffcc;
 }
 
 .vote-summary ul {
   list-style: none;
-  padding-left: 20px;
+  padding-left: 0;
+  margin-top: 8px;
 }
 
 .vote-summary li {
-  padding: 6px 0;
-  color: #4b5563;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.9);
+  border-left: 3px solid #60a5fa;
+}
+
+.ai-votes {
+  margin: 16px 0;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.vote-count-summary {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .vote-counts {
@@ -367,24 +422,27 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: white;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 12px 16px;
   border-radius: 8px;
-  border: 2px solid var(--border-color);
+  margin-bottom: 8px;
 }
 
 .player-name {
   font-weight: 600;
-  color: var(--text-color);
+  color: white;
 }
 
 .vote-badge {
-  background: var(--primary-color);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 4px 12px;
+  padding: 6px 14px;
   border-radius: 12px;
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.95rem;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
 }
 
 .liar-reveal {
