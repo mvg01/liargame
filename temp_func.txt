@@ -1,0 +1,26 @@
+def liar_guess_keyword(session_id: str, guess: str) -> dict:
+    """
+    라이어가 키워드를 추측 (역전 승부 시도)
+
+    Args:
+        session_id: 세션 ID
+        guess: 라이어가 추측한 키워드
+
+    Returns:
+        dict: {"correct": bool, "keyword": str, "result": str}
+    """
+    game = get_game(session_id)
+
+    is_correct = guess.strip().lower() == game.keyword.strip().lower()
+
+    result = {
+        "correct": is_correct,
+        "keyword": game.keyword,
+    }
+
+    if is_correct:
+        result["result"] = "라이어 역전 승리! 키워드를 맞혔습니다!"
+    else:
+        result["result"] = f"라이어 패배! 정답은 \"{game.keyword}\"였습니다."
+
+    return result

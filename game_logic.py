@@ -1,0 +1,300 @@
+"""
+게임 로직 및 AI 상호작용
+"""
+import random
+import json
+from pathlib import Path
+from typing import Dict, List, Tuple
+from openai import OpenAI
+from config import get_settings
+from models import GameState, Message, PlayerRole
+
+# 설정 로드
+settings = get_settings()
+
+# OpenAI 클라이언트 초기화
+client = OpenAI(api_key=settings.openai_api_key)
+
+# 게임 상태 저장소 (In-Memory)
+# 실제 배포 시에는 Redis 등의 외부 스토리지 사용 권장
+game_sessions: Dict[str, GameState] = {}
+
+# word.json 로드
+def load_word_data() -> Dict[str, List[str]]:
+    """word.json 파일에서 카테고리별 단어 목록 로드"""
+    word_file = Path(__file__).parent / "word.json"
+    with open(word_file, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def get_random_keyword() -> Tuple[str, str]:
+    """
+    랜덤 카테고리와 키워드 반환
+
+    Returns:
+        Tuple[str, str]: (카테고리, 키워드)
+    """
+    word_data = load_word_data()
+    category = random.choice(list(word_data.keys()))
+    keyword = random.choice(word_data[category])
+    return category, keyword
+
+
+def create_game(session_id: str, keyword: str = None, category: str = None) -> GameState:
+    """
+    새 게임 생성
+
+    Args:
+        session_id: 세션 고유 ID
+        keyword: 게임 주제어 (None이면 랜덤)
+        category: 카테고리 (keyword가 None이면 자동 설정)
+
+    Returns:
+        GameState: 생성된 게임 상태
+    """
+    # keyword가 없으면 랜덤 선택
+    if keyword is None:
+        category, keyword = get_random_keyword()
+
+    # 라이어 랜덤 선정
+    ai_players = ["ai_1", "ai_2", "ai_3"]
+    liar = random.choice(ai_players)
+
+    # 역할 배정
+    ai_roles = {ai: PlayerRole.LIAR if ai == liar else PlayerRole.CIVILIAN for ai in ai_players}
+
+    # 게임 상태 생성
+    game = GameState(
+        session_id=session_id,
+        keyword=keyword,
+        category=category,
+        liar=liar,
+        ai_roles=ai_roles,
+        history=[],
+        started=True,
+    )
+
+    # 저장
+    game_sessions[session_id] = game
+
+    return game
+
+
+def get_game(session_id: str) -> GameState:
+    """게임 상태 조회"""
+    if session_id not in game_sessions:
+        raise ValueError(f"Session {session_id} not found")
+    return game_sessions[session_id]
+
+
+def _build_system_prompt(role: PlayerRole, keyword: str) -> str:
+    """
+    역할에 따른 시스템 프롬프트 생성
+
+    Args:
+        role: 플레이어 역할 (CIVILIAN or LIAR)
+        keyword: 게임 주제어
+
+    Returns:
+        str: 시스템 프롬프트
+    """
+    if role == PlayerRole.CIVILIAN:
+        return f"""당신은 '라이어 게임'에 참여하는 시민(Civilian) AI입니다.
+
+**게임 규칙:**
+- 주제어는 '{keyword}'입니다.
+- 당신은 이 주제어를 알고 있지만, 다른 AI 중 한 명은 라이어로서 주제어를 모릅니다.
+- 목표: 라이어를 찾아내는 것입니다.
+
+**발언 전략:**
+1. 주제어를 너무 직접적으로 설명하지 마세요. 라이어가 쉽게 눈치챌 수 있습니다.
+2. 하지만 너무 엉뚱한 말을 하면 동료 시민들이 당신을 의심할 수 있습니다.
+3. 주제어와 관련된 간접적인 힌트나 연상되는 표현을 사용하세요.
+4. 짧고 자연스럽게 대답하세요 (1-2문장).
+5. 이전 대화를 보고 누가 라이어인지 추리하세요.
+
+**중요:** 당신은 반드시 '{keyword}'에 대해 알고 있는 사람처럼 행동해야 합니다."""
+
+    else:  # LIAR
+        return f"""당신은 '라이어 게임'에 참여하는 라이어(Liar) AI입니다.
+
+**게임 규칙:**
+- 다른 플레이어들은 공통 주제어를 알고 있지만, 당신은 주제어를 모릅니다.
+- 목표: 들키지 않고 시민인 척하는 것입니다.
+
+**발언 전략:**
+1. 이전 대화를 주의 깊게 관찰하세요.
+2. User와 다른 AI들의 발언에서 주제어의 카테고리를 추측하세요.
+3. 비슷한 카테고리에 속하는 모호하고 일반적인 표현을 사용하세요.
+4. 절대 "모르겠다" "뭔지 모르겠어" 같은 티를 내지 마세요.
+5. 확신에 차서, 자연스럽게 대답하세요 (1-2문장).
+6. 너무 구체적이면 틀릴 수 있으니 적당히 애매하게 말하세요.
+
+**중요:** 당신은 주제어를 모르지만, 아는 척해야 합니다. 이전 대화의 맥락을 잘 따라가세요."""
+
+
+def generate_ai_response(session_id: str, ai_name: str) -> str:
+    """
+    특정 AI의 응답 생성 (독립적인 스레드로 동작)
+
+    Args:
+        session_id: 세션 ID
+        ai_name: AI 이름 (ai_1, ai_2, ai_3)
+
+    Returns:
+        str: AI 응답
+    """
+    game = get_game(session_id)
+
+    # 해당 AI의 역할 및 주제어
+    role = game.ai_roles[ai_name]
+    keyword = game.keyword
+
+    # 시스템 프롬프트 생성 (역할에 따라 다름)
+    system_prompt = _build_system_prompt(role, keyword)
+
+    # 대화 기록을 OpenAI 메시지 형식으로 변환
+    # 최근 N개만 전송하여 토큰 비용 절감 (옵션)
+    recent_history = game.history[-settings.max_history_length :]
+
+    messages = [{"role": "system", "content": system_prompt}]
+
+    for msg in recent_history:
+        messages.append(
+            {
+                "role": "user" if msg.speaker == "user" else "assistant",
+                "content": f"[{msg.speaker}]: {msg.content}",
+            }
+        )
+
+    # 현재 턴 안내
+    messages.append({"role": "user", "content": f"이제 당신({ai_name})의 차례입니다. 간단히 대답하세요."})
+
+    # OpenAI API 호출
+    try:
+        response = client.chat.completions.create(
+            model=settings.openai_model, messages=messages, temperature=0.8, max_tokens=150
+        )
+
+        ai_response = response.choices[0].message.content.strip()
+        return ai_response
+
+    except Exception as e:
+        return f"[오류] AI 응답 생성 실패: {str(e)}"
+
+
+def add_message_to_history(session_id: str, speaker: str, content: str):
+    """대화 기록에 메시지 추가"""
+    game = get_game(session_id)
+    game.history.append(Message(speaker=speaker, content=content))
+
+
+def ai_vote(session_id: str, ai_name: str) -> str:
+    """
+    AI가 라이어를 투표
+
+    Args:
+        session_id: 세션 ID
+        ai_name: 투표하는 AI 이름
+
+    Returns:
+        str: 투표 대상 (ai_1, ai_2, ai_3, user)
+    """
+    game = get_game(session_id)
+    role = game.ai_roles[ai_name]
+    keyword = game.keyword
+
+    # 투표 프롬프트
+    if role == PlayerRole.CIVILIAN:
+        vote_prompt = f"""당신은 시민이며 주제어는 '{keyword}'입니다.
+
+지금까지의 대화를 보고, 누가 라이어(주제어를 모르는 사람)인 것 같은지 판단하세요.
+
+**투표 대상:**
+- user (사용자)
+- ai_1
+- ai_2
+- ai_3
+
+**중요:** 자신({ai_name})은 투표할 수 없습니다. 반드시 다른 사람 중 한 명을 선택하세요.
+
+투표 대상의 이름만 정확히 출력하세요. (예: user, ai_1, ai_2, ai_3)"""
+    else:  # LIAR
+        vote_prompt = f"""당신은 라이어입니다. 주제어를 모르지만 들키지 않으려면 적당히 투표해야 합니다.
+
+지금까지의 대화를 보고, 전략적으로 투표하세요.
+- 너무 이상한 사람에게 투표하면 오히려 의심받을 수 있습니다.
+- 자연스럽게 행동하세요.
+
+**투표 대상:**
+- user (사용자)
+- ai_1
+- ai_2
+- ai_3
+
+**중요:** 자신({ai_name})은 투표할 수 없습니다. 반드시 다른 사람 중 한 명을 선택하세요.
+
+투표 대상의 이름만 정확히 출력하세요. (예: user, ai_1, ai_2, ai_3)"""
+
+    # 대화 기록 포함
+    messages = [{"role": "system", "content": vote_prompt}]
+
+    for msg in game.history:
+        messages.append(
+            {
+                "role": "user" if msg.speaker == "user" else "assistant",
+                "content": f"[{msg.speaker}]: {msg.content}",
+            }
+        )
+
+    messages.append({"role": "user", "content": "투표하세요. (user, ai_1, ai_2, ai_3 중 선택)"})
+
+    try:
+        response = client.chat.completions.create(
+            model=settings.openai_model, messages=messages, temperature=0.7, max_tokens=10
+        )
+
+        vote = response.choices[0].message.content.strip().lower()
+
+        # 유효성 검사
+        valid_targets = ["user", "ai_1", "ai_2", "ai_3"]
+        for target in valid_targets:
+            if target in vote and target != ai_name:
+                return target
+
+        # 기본값: 자신이 아닌 랜덤 선택
+        candidates = [t for t in valid_targets if t != ai_name]
+        return random.choice(candidates)
+
+    except Exception as e:
+        # 오류 시 랜덤 투표
+        candidates = ["user", "ai_1", "ai_2", "ai_3"]
+        candidates.remove(ai_name)
+        return random.choice(candidates)
+
+
+def liar_guess_keyword(session_id: str, guess: str) -> dict:
+    """
+    라이어가 키워드를 추측 (역전 승부 시도)
+
+    Args:
+        session_id: 세션 ID
+        guess: 라이어가 추측한 키워드
+
+    Returns:
+        dict: {"correct": bool, "keyword": str, "result": str}
+    """
+    game = get_game(session_id)
+
+    is_correct = guess.strip().lower() == game.keyword.strip().lower()
+
+    result = {
+        "correct": is_correct,
+        "keyword": game.keyword,
+    }
+
+    if is_correct:
+        result["result"] = "라이어 역전 승리! 키워드를 맞혔습니다!"
+    else:
+        result["result"] = f"라이어 패배! 정답은 '{game.keyword}'였습니다."
+
+    return result
