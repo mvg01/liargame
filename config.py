@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # OpenAI API 설정
     openai_api_key: str
-    openai_model: str = "gpt-4o"
+    openai_model: str = "gpt-4o-2024-11-20"
 
     # 서버 설정
     host: str = "0.0.0.0"
