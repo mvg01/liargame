@@ -156,6 +156,33 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
     }
   }
 
+  // AI 라이어 자동 추측
+  useEffect(() => {
+    if (gamePhase === 'liar_caught' && voteResult && voteResult.actual_liar !== 'user' && !loading) {
+      // AI 라이어인 경우 2초 후 자동으로 추측
+      const timer = setTimeout(async () => {
+        setLoading(true)
+        setError('')
+
+        try {
+          const response = await gameAPI.liarGuess(sessionId, '')
+          setFinalResult({
+            ...voteResult,
+            liar_guess_result: response,
+            result: response.result,
+          })
+          setGamePhase('result')
+        } catch (err) {
+          setError(err.response?.data?.detail || 'AI 추측 실패')
+        } finally {
+          setLoading(false)
+        }
+      }, 2000)
+
+      return () => clearTimeout(timer)
+    }
+  }, [gamePhase, voteResult, loading, sessionId, voteResult?.actual_liar])
+
   // 라이어 역전 승부 화면
   if (gamePhase === 'liar_caught' && voteResult) {
     const isUserLiar = voteResult.actual_liar === 'user'
@@ -196,6 +223,7 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
               <p className="category-hint">카테고리: <strong>{category}</strong></p>
               <div className="waiting-liar">
                 <p>잠시만 기다려주세요...</p>
+                {loading && <p className="thinking">🤔 추측 중...</p>}
               </div>
             </div>
           )}
@@ -253,13 +281,26 @@ const GamePage = ({ sessionId, keyword, category, onRestart }) => {
 
           <div className="result-section liar-reveal">
             <h2>🎭 라이어는...</h2>
-            <p className="liar-name">{getSpeakerName(finalResult.actual_liar)}</p>
+            <p className="liar-name">{getSpeakerName(actualLiar || finalResult.actual_liar)}</p>
           </div>
 
           <div className="result-section keyword-reveal">
             <h2>💡 주제어</h2>
             <p className="keyword-name">{keyword}</p>
             <p className="category-name">카테고리: {category}</p>
+          </div>
+
+          {/* 대화 기록 */}
+          <div className="result-section conversation-history">
+            <h2>💬 대화 기록</h2>
+            <div className="history-messages">
+              {history.map((msg, index) => (
+                <div key={index} className={`history-message ${msg.speaker === 'user' ? 'user' : 'ai'}`}>
+                  <span className="history-speaker">{getSpeakerName(msg.speaker)}</span>
+                  <span className="history-content">{msg.content}</span>
+                </div>
+              ))}
+            </div>
           </div>
 
           <button onClick={onRestart} className="restart-button">

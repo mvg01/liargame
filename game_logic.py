@@ -288,6 +288,59 @@ def ai_vote(session_id: str, ai_name: str) -> str:
         return random.choice(candidates)
 
 
+def ai_liar_guess_keyword(session_id: str) -> str:
+    """
+    AI 라이어가 키워드를 추측
+
+    Args:
+        session_id: 세션 ID
+
+    Returns:
+        str: AI가 추측한 키워드
+    """
+    game = get_game(session_id)
+    category = game.category
+
+    # 대화 기록 컨텍스트
+    history_text = "\n".join([f"{msg.speaker}: {msg.content}" for msg in game.history])
+
+    guess_prompt = f"""당신은 라이어 게임에서 걸린 라이어입니다. 마지막 역전 기회가 주어졌습니다!
+
+**상황:**
+- 카테고리: {category}
+- 당신은 주제어를 모르지만, 대화 내용을 분석하여 추측해야 합니다.
+- 시민들이 한 발언에서 힌트를 찾아보세요.
+
+**대화 기록:**
+{history_text}
+
+**임무:**
+위 대화를 분석하여 카테고리 '{category}' 내에서 가장 가능성 높은 주제어를 하나만 추측하세요.
+반드시 단어 하나만 출력하세요. 설명이나 추가 문장 없이 오직 주제어만 답하세요.
+
+예시:
+- 카테고리가 '과일'이고 대화에서 "빨갛다", "달다", "씨가 많다"는 힌트가 있었다면 → 딸기
+- 카테고리가 '영화'이고 대화에서 "감동", "전쟁", "역사"라는 힌트가 있었다면 → 태극기휘날리며
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[
+                {"role": "system", "content": "당신은 라이어 게임의 AI 플레이어입니다. 주제어를 정확히 하나만 추측하세요."},
+                {"role": "user", "content": guess_prompt},
+            ],
+            temperature=0.8,
+        )
+
+        ai_guess = response.choices[0].message.content.strip()
+        return ai_guess
+
+    except Exception as e:
+        # 오류 시 카테고리 내 일반적인 단어 반환
+        return "오류"
+
+
 def liar_guess_keyword(session_id: str, guess: str) -> dict:
     """
     라이어가 키워드를 추측 (역전 승부 시도)
@@ -306,6 +359,7 @@ def liar_guess_keyword(session_id: str, guess: str) -> dict:
     result = {
         "correct": is_correct,
         "keyword": game.keyword,
+        "guess": guess,
     }
 
     if is_correct:

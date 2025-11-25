@@ -21,6 +21,7 @@ from game_logic import (
     generate_ai_response,
     add_message_to_history,
     ai_vote,
+    ai_liar_guess_keyword,
     liar_guess_keyword,
     generate_host_comment,
 )
@@ -206,11 +207,16 @@ async def liar_guess(request: LiarGuessRequest):
     라이어가 투표에서 걸렸을 때, 키워드를 맞히면 역전 승리
     """
     try:
-        result = liar_guess_keyword(request.session_id, request.guess)
+        # guess가 비어있으면 AI 라이어가 자동으로 추측
+        guess = request.guess
+        if not guess or guess.strip() == "":
+            guess = ai_liar_guess_keyword(request.session_id)
+
+        result = liar_guess_keyword(request.session_id, guess)
 
         return LiarGuessResponse(
             session_id=request.session_id,
-            guess=request.guess,
+            guess=result["guess"],
             correct=result["correct"],
             keyword=result["keyword"],
             result=result["result"],

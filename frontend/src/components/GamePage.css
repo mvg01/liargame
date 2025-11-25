@@ -566,6 +566,26 @@
   background: var(--primary-hover);
 }
 
+.waiting-liar {
+  margin-top: 20px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+}
+
+.waiting-liar p {
+  color: #6b7280;
+  font-size: 1rem;
+  margin: 8px 0;
+}
+
+.waiting-liar .thinking {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
 .vote-summary-small {
   background: #f9fafb;
   padding: 20px;
@@ -631,6 +651,76 @@
   color: #6b7280;
   margin-top: 8px;
   text-align: center;
+}
+
+/* 대화 기록 (결과 화면) */
+.conversation-history {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.history-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-message {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border-left: 3px solid rgba(255, 255, 255, 0.3);
+}
+
+.history-message.user {
+  border-left-color: #60a5fa;
+  background: rgba(219, 234, 254, 0.1);
+}
+
+.history-message.ai {
+  border-left-color: #ffcc00;
+  background: rgba(254, 243, 199, 0.1);
+}
+
+.history-speaker {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: white;
+}
+
+.history-message.user .history-speaker {
+  color: #60a5fa;
+}
+
+.history-message.ai .history-speaker {
+  color: #ffcc00;
+}
+
+.history-content {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.conversation-history::-webkit-scrollbar {
+  width: 8px;
+}
+
+.conversation-history::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.conversation-history::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.conversation-history::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 /* 발언 순서 표시 */

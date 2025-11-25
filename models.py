@@ -81,7 +81,7 @@ class LiarGuessRequest(BaseModel):
     """라이어 역전 승부 요청"""
 
     session_id: str
-    guess: str = Field(..., description="라이어가 추측한 키워드")
+    guess: str = Field(default="", description="라이어가 추측한 키워드 (빈 문자열이면 AI 자동 추측)")
 
 
 class LiarGuessResponse(BaseModel):
