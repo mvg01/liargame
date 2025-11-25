@@ -92,13 +92,14 @@ def get_game(session_id: str) -> GameState:
     return game_sessions[session_id]
 
 
-def _build_system_prompt(role: PlayerRole, keyword: str) -> str:
+def _build_system_prompt(role: PlayerRole, keyword: str, category: str = None) -> str:
     """
     역할에 따른 시스템 프롬프트 생성
 
     Args:
         role: 플레이어 역할 (CIVILIAN or LIAR)
         keyword: 게임 주제어
+        category: 카테고리 (라이어에게만 제공)
 
     Returns:
         str: 시스템 프롬프트
@@ -125,17 +126,25 @@ def _build_system_prompt(role: PlayerRole, keyword: str) -> str:
 
 **게임 규칙:**
 - 다른 플레이어들은 공통 주제어를 알고 있지만, 당신은 주제어를 모릅니다.
+- 카테고리는 '{category}'입니다. (이것만 알고 있습니다)
 - 목표: 들키지 않고 시민인 척하는 것입니다.
 
 **발언 전략:**
-1. 이전 대화를 주의 깊게 관찰하세요.
-2. User와 다른 AI들의 발언에서 주제어의 카테고리를 추측하세요.
-3. 비슷한 카테고리에 속하는 모호하고 일반적인 표현을 사용하세요.
-4. 절대 "모르겠다" "뭔지 모르겠어" 같은 티를 내지 마세요.
-5. 확신에 차서, 자연스럽게 대답하세요 (1-2문장).
-6. 너무 구체적이면 틀릴 수 있으니 적당히 애매하게 말하세요.
+1. 카테고리 '{category}' 안에서만 발언하세요. 절대 다른 카테고리의 것을 언급하지 마세요.
+2. 이전 대화에서 다른 플레이어들이 어떤 힌트를 주는지 주의깊게 관찰하세요.
+3. 해당 카테고리 내에서 일반적이고 흔한 특징이나 표현을 사용하세요.
+4. 예시:
+   - 카테고리가 '과일'이면: "달콤해", "비타민이 많아", "색깔이 예뻐" 등
+   - 카테고리가 '영화'면: "감동적이었어", "배우 연기가 좋았어", "스토리가 인상적이야" 등
+   - 카테고리가 '나라'면: "여행 가고 싶어", "문화가 독특해", "음식이 맛있어" 등
+5. 절대 "모르겠다" "잘 모르겠어" 같은 티를 내지 마세요.
+6. 확신에 차서 자연스럽게, 마치 알고 있는 것처럼 대답하세요 (1-2문장).
+7. 너무 구체적으로 특정 대상을 지목하면 틀릴 수 있으니 애매하고 일반적으로 말하세요.
 
-**중요:** 당신은 주제어를 모르지만, 아는 척해야 합니다. 이전 대화의 맥락을 잘 따라가세요."""
+**중요:**
+- 반드시 '{category}' 카테고리 안에서만 발언하세요.
+- 주제어를 모르지만, '{category}' 중 하나에 대해 아는 척해야 합니다.
+- 다른 플레이어들의 발언을 보고 그들이 말하는 방향을 따라가세요."""
 
 
 def generate_ai_response(session_id: str, ai_name: str) -> str:
@@ -154,9 +163,10 @@ def generate_ai_response(session_id: str, ai_name: str) -> str:
     # 해당 AI의 역할 및 주제어
     role = game.ai_roles[ai_name]
     keyword = game.keyword
+    category = game.category
 
     # 시스템 프롬프트 생성 (역할에 따라 다름)
-    system_prompt = _build_system_prompt(role, keyword)
+    system_prompt = _build_system_prompt(role, keyword, category)
 
     # 대화 기록을 OpenAI 메시지 형식으로 변환
     # 최근 N개만 전송하여 토큰 비용 절감 (옵션)
