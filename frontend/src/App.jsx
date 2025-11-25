@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import GamePage from './components/GamePage'
 import './App.css'
 
@@ -7,6 +7,31 @@ function App() {
   const [sessionId, setSessionId] = useState('')
   const [keyword, setKeyword] = useState('')
   const [category, setCategory] = useState('')
+  const vantaRef = useRef(null)
+
+  // Vanta.js 배경 초기화
+  useEffect(() => {
+    if (!vantaRef.current && window.VANTA) {
+      vantaRef.current = window.VANTA.GLOBE({
+        el: '#vibe-bg',
+        mouseControls: true,
+        touchControls: true,
+        gyroControls: false,
+        minHeight: 200.0,
+        minWidth: 200.0,
+        scale: 1.0,
+        scaleMobile: 1.0,
+        color: 0x9370db,
+        backgroundColor: 0x050505,
+      })
+    }
+
+    return () => {
+      if (vantaRef.current) {
+        vantaRef.current.destroy()
+      }
+    }
+  }, [])
 
   const handleStartGame = (sid, kw, cat) => {
     setSessionId(sid)
